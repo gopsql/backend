@@ -7,6 +7,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gopsql/db"
 	"github.com/gopsql/logger"
+	"github.com/gopsql/migrator"
 	"github.com/gopsql/psql"
 )
 
@@ -18,6 +19,7 @@ type (
 
 		models    []*psql.Model
 		logger    logger.Logger
+		migrator  *migrator.Migrator
 		errNoRows error
 		toArray   toArray
 	}
@@ -43,6 +45,7 @@ func NewBackend() *Backend {
 	return &Backend{
 		Validator: validator.New(),
 		logger:    logger.NoopLogger,
+		migrator:  migrator.NewMigrator(),
 	}
 }
 
@@ -79,6 +82,7 @@ func (backend *Backend) SetToArray(f toArray) {
 // SetConnection sets database connection.
 func (backend *Backend) SetConnection(dbConn db.DB) {
 	backend.errNoRows = dbConn.ErrNoRows()
+	backend.migrator.SetConnection(dbConn)
 	for _, m := range backend.models {
 		m.SetConnection(dbConn)
 	}
@@ -87,9 +91,14 @@ func (backend *Backend) SetConnection(dbConn db.DB) {
 // SetLogger sets logger.
 func (backend *Backend) SetLogger(logger logger.Logger) {
 	backend.logger = logger
+	backend.migrator.SetLogger(logger)
 	for _, m := range backend.models {
 		m.SetLogger(logger)
 	}
+}
+
+func (backend *Backend) SetMigrations(migrations interface{}) {
+	backend.migrator.SetMigrations(migrations)
 }
 
 // ModelByName finds psql.Model by name.

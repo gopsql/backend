@@ -2,11 +2,14 @@ package backend
 
 import (
 	"errors"
+	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/gopsql/migrator"
 )
 
 // ValidateStruct validates struct with github.com/go-playground/validator/v10.
@@ -92,4 +95,51 @@ func randomString(n int) string {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 	return string(b)
+}
+
+// CheckMigrations prints a warning if there are migrations not yet run. If
+// CREATE_MIGRATION=1 environment variable is set, create new migrationn file.
+// If MIGRATE=1 environment variable is set, executes the up SQL for all the
+// migrations that have not yet been run. If ROLLBACK=1 environment variable
+// is set, rollback last migration.
+func (backend Backend) CheckMigrations() {
+	m := backend.migrator
+
+	if os.Getenv("CREATE_MIGRATION") == "1" {
+		var models []migrator.PsqlModel
+		for _, m := range backend.models {
+			models = append(models, migrator.PsqlModel(m))
+		}
+		migrations, err := m.NewMigration(models...)
+		if err != nil {
+			backend.logger.Fatal(err)
+		}
+		dir := "migrations"
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			backend.logger.Fatal(err)
+		}
+		for _, migration := range migrations {
+			path := filepath.Join(dir, migration.FileName())
+			err := ioutil.WriteFile(path, []byte(migration.String()), 0644)
+			if err != nil {
+				backend.logger.Fatal(err)
+			}
+			backend.logger.Info("written", path)
+		}
+		os.Exit(0)
+	}
+
+	if _, unmigrated := m.Versions(); len(unmigrated) > 0 {
+		backend.logger.Warning("Warning: You have", len(unmigrated), "pending migrations. Use MIGRATE=1 to run migrations.")
+	}
+
+	if os.Getenv("MIGRATE") == "1" {
+		m.Migrate()
+		os.Exit(0)
+	}
+
+	if os.Getenv("ROLLBACK") == "1" {
+		m.Rollback()
+		os.Exit(0)
+	}
 }
