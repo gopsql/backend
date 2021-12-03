@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/gopsql/goconf"
 	"github.com/gopsql/migrator"
 )
 
@@ -142,4 +143,49 @@ func (backend Backend) CheckMigrations() {
 		m.Rollback()
 		os.Exit(0)
 	}
+}
+
+// ReadConfigs uses github.com/gopsql/goconf to read config file into target
+// config struct.
+func (backend Backend) ReadConfigs(configFile string, target interface{}) {
+	toCreate := os.Getenv("CREATE_CONFIG") == "1"
+	err := readFile(configFile, target)
+	if toCreate {
+		if err := writeFile(configFile, target); err != nil {
+			backend.logger.Error(err)
+			os.Exit(1)
+		} else {
+			backend.logger.Info("Config file written:", configFile)
+			os.Exit(0)
+		}
+	} else if err != nil {
+		backend.logger.Warning("Warning: Error reading config file:", err)
+		backend.logger.Warning("Use CREATE_CONFIG=1 create or update config file.")
+	}
+}
+
+type canSetDefaultValues interface {
+	SetDefaultValues()
+}
+
+func readFile(file string, target interface{}) error {
+	content, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	err = goconf.Unmarshal(content, target)
+	if err == nil {
+		if t, ok := target.(canSetDefaultValues); ok {
+			t.SetDefaultValues()
+		}
+	}
+	return err
+}
+
+func writeFile(file string, conf interface{}) error {
+	content, err := goconf.Marshal(conf)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(file, content, 0600)
 }
