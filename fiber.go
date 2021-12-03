@@ -39,7 +39,7 @@ func (backend Backend) FiberNewSession(c FiberCtx, adminId int) (token string, e
 	if err != nil {
 		return
 	}
-	return backend.JWTSession.GenerateAuthorization(adminId, sessionId)
+	return backend.jwtSession.GenerateAuthorization(adminId, sessionId)
 }
 
 // MustFiberNewSession is like FiberNewSession but panics if session creations
@@ -88,7 +88,7 @@ func (backend Backend) MustFiberValidateNewSession(c FiberCtx) string {
 // FiberGetAdminAndSessionId returns the admin and session ID from the
 // Authorization header of a fiber context.
 func (backend Backend) FiberGetAdminAndSessionId(c FiberCtx) (adminId int, sessionId string, ok bool) {
-	return backend.JWTSession.ParseAuthorization(c.Get("Authorization"))
+	return backend.jwtSession.ParseAuthorization(c.Get("Authorization"))
 }
 
 // FiberGetCurrentAdmin finds admin in the database and updates the admin
