@@ -124,25 +124,83 @@ func (backend *Backend) ModelByName(name string) *psql.Model {
 	return nil
 }
 
-func (backend *Backend) FlagUsage() func() {
-	for _, arg := range flag.Args() {
-		idx := strings.Index(arg, "=")
-		if idx > -1 {
-			os.Setenv(arg[0:idx], arg[idx+1:])
+type (
+	flagUsages       [][]string
+	flagUsageOptions []flagUsageOption
+	flagUsageOption  int
+)
+
+const (
+	NoCreateAdmin flagUsageOption = iota
+	NoCreateConfig
+	NoCreateMigration
+	NoMigrate
+	NoRollback
+)
+
+var allFlagUsages = flagUsages{
+	{"CREATE_ADMIN=1", "reset first admin password or create new admin"},
+	{"CREATE_CONFIG=1", "create new config or update existing config"},
+	{"CREATE_MIGRATION=1", "generate new migration file"},
+	{"MIGRATE=1", "run new migrations"},
+	{"ROLLBACK=1", "rollback last migration"},
+}
+
+func (options flagUsageOptions) has(option flagUsageOption) bool {
+	for _, o := range options {
+		if o == option {
+			return true
 		}
 	}
+	return false
+}
+
+func (options flagUsageOptions) flagUsages() (out flagUsages) {
+	for i, usage := range allFlagUsages {
+		if options.has(flagUsageOption(i)) {
+			continue
+		}
+		out = append(out, usage)
+	}
+	return
+}
+
+func (usages flagUsages) String() string {
+	var max int
+	for _, usage := range usages {
+		if len(usage[0]) > max {
+			max = len(usage[0])
+		}
+	}
+	var lines []string
+	for _, usage := range usages {
+		spaces := strings.Repeat(" ", max-len(usage[0]))
+		lines = append(lines, fmt.Sprintf("  %s%s - %s", usage[0], spaces, usage[1]))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (backend *Backend) FlagUsage(options ...flagUsageOption) func() {
+	usage := flagUsageOptions(options).flagUsages().String()
 	return func() {
 		o := flag.CommandLine.Output()
 		fmt.Fprintf(o, "Usage: %s [OPTIONS] [ENVVARS...]\n", backend.Name)
 		fmt.Fprintln(o)
 		fmt.Fprintln(o, "Options:")
 		flag.PrintDefaults()
-		fmt.Fprintln(o)
-		fmt.Fprintln(o, "Available ENVVARS (environment variables):")
-		fmt.Fprintln(o, "  CREATE_ADMIN=1     - reset first admin password or create new admin")
-		fmt.Fprintln(o, "  CREATE_CONFIG=1    - create new config or update existing config")
-		fmt.Fprintln(o, "  CREATE_MIGRATION=1 - generate new migration file")
-		fmt.Fprintln(o, "  MIGRATE=1          - run new migrations")
-		fmt.Fprintln(o, "  ROLLBACK=1         - rollback last migration")
+		if usage != "" {
+			fmt.Fprintln(o)
+			fmt.Fprintln(o, "Available ENVVARS (environment variables):")
+			fmt.Fprintln(o, usage)
+		}
+	}
+}
+
+func SetEnvFromArgs() {
+	for _, arg := range flag.Args() {
+		idx := strings.Index(arg, "=")
+		if idx > -1 {
+			os.Setenv(arg[0:idx], arg[idx+1:])
+		}
 	}
 }
