@@ -56,8 +56,6 @@ func NewBackend() *Backend {
 
 func newDefaultBackend() *Backend {
 	b := NewBackend()
-	b.NewModel(Admin{})
-	b.NewModel(AdminSession{})
 	b.Validator.RegisterValidation("uniqueness", func(fl validator.FieldLevel) bool {
 		if i, ok := fl.Top().Interface().(interface{ IsUnique(*Backend, string) bool }); ok {
 			return i.IsUnique(b, fl.StructFieldName())
@@ -72,6 +70,14 @@ func (backend *Backend) NewModel(object interface{}, options ...interface{}) *ps
 	m := psql.NewModel(object, options...)
 	backend.AddModels(m)
 	return m
+}
+
+func (backend *Backend) AddModelAdmin() {
+	backend.NewModel(Admin{})
+}
+
+func (backend *Backend) AddModelAdminSession() {
+	backend.NewModel(AdminSession{})
 }
 
 // AddModels adds one or multiple psql.Model instances to backend.
