@@ -28,9 +28,13 @@ func (backend Backend) MustValidateStruct(i interface{}) {
 	}
 }
 
+func (backend Backend) IsErrNoRows(err error) bool {
+	return backend.errNoRows != nil && backend.errNoRows == err
+}
+
 // HandleError returns status code and error message given error.
 func (backend Backend) HandleError(err error) (status int, json interface{}) {
-	if err == backend.errNoRows {
+	if backend.IsErrNoRows(err) {
 		return 404, struct{ Message string }{"Not Found"}
 	}
 	if errs, ok := err.(InputErrors); ok {
