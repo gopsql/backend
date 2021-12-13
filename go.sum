@@ -22,8 +22,8 @@ github.com/gopsql/migrator v1.4.0 h1:yfph0f295Y8Q/9uuHbfQE94SeVcF7+F5fbwUkLV/Nlo
 github.com/gopsql/migrator v1.4.0/go.mod h1:+zNkEAs5em0AnWoOsAZF4/y1egj5vKxC3CANrrW/CMA=
 github.com/gopsql/pagination/v2 v2.2.0 h1:9b5inG4//0RxyMMJoVYwyaEGTd/m3PKMbEywtr5K5Nw=
 github.com/gopsql/pagination/v2 v2.2.0/go.mod h1:enDfzE4JHiIEkvNHF5sL+xhujdYcLA+D3gEWMuCjICU=
-github.com/gopsql/psql v1.4.1 h1:Bs4M/a5LBs+7sT05yEdAxCM+HAWEX391wOkEEAZ+ohs=
-github.com/gopsql/psql v1.4.1/go.mod h1:uOMoeLBKH4MfJmZe3dXYfg5qJ36dDaxoYQU2tfpUnas=
+github.com/gopsql/psql v1.5.0 h1:PoEr9+1llK+SnR+DcFlFIW6odKZX338xhayQCuRajW8=
+github.com/gopsql/psql v1.5.0/go.mod h1:uOMoeLBKH4MfJmZe3dXYfg5qJ36dDaxoYQU2tfpUnas=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
 github.com/kr/pretty v0.3.0/go.mod h1:640gp4NfQd8pI5XOwp5fnNeVWj67G7CFk/SaSQn7NBk=
