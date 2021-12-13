@@ -29,6 +29,12 @@ type (
 		toArray    toArray
 	}
 
+	SQL       = psql.SQL
+	SelectSQL = psql.SelectSQL
+	InsertSQL = psql.InsertSQL
+	DeleteSQL = psql.DeleteSQL
+	UpdateSQL = psql.UpdateSQL
+
 	// github.com/gopsql/jwt.Session
 	jwtSession interface {
 		GenerateAuthorization(userId int, sessionId string) (string, error)
