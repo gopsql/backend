@@ -1,10 +1,12 @@
 package backend
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/gopsql/bcrypt"
+	"github.com/gopsql/psql"
 )
 
 type (
@@ -15,14 +17,14 @@ type (
 		Password  bcrypt.Password `validate:"required"`
 		CreatedAt time.Time
 		UpdatedAt time.Time
-		DeletedAt *time.Time `dataType:"timestamptz"`
+		DeletedAt *time.Time
 	}
 
 	// Admin session contains session ID, IP address and user-agent.
 	AdminSession struct {
 		Id        int
 		AdminId   int
-		SessionId string `dataType:"UUID NOT NULL DEFAULT gen_random_uuid()"`
+		SessionId string
 		IpAddress string
 		UserAgent string
 		CreatedAt time.Time
@@ -48,8 +50,24 @@ type (
 	}
 )
 
-func (Admin) AfterCreateSchema() string {
-	return `CREATE UNIQUE INDEX unique_admin ON admins USING btree (lower(name));`
+func (Admin) AfterCreateSchema(m psql.Model) string {
+	if m.Connection().DriverName() == "sqlite" {
+		return fmt.Sprintf("CREATE UNIQUE INDEX unique_admin ON %s (%s COLLATE NOCASE);",
+			m.TableName(), m.ToColumnName("Name"))
+	}
+	return fmt.Sprintf("CREATE UNIQUE INDEX unique_admin ON %s USING btree (lower(%s));",
+		m.TableName(), m.ToColumnName("Name"))
+}
+
+func (Admin) DataType(m psql.Model, fieldName string) (dataType string) {
+	if fieldName == "DeletedAt" {
+		if m.Connection() != nil && m.Connection().DriverName() == "sqlite" {
+			dataType = "timestamp"
+		} else {
+			dataType = "timestamptz"
+		}
+	}
+	return
 }
 
 func (a Admin) IsUnique(backend *Backend, field string) bool { // uniqueness
@@ -60,8 +78,20 @@ func (a Admin) IsUnique(backend *Backend, field string) bool { // uniqueness
 	return true
 }
 
-func (AdminSession) AfterCreateSchema() string {
-	return `CREATE UNIQUE INDEX unique_admin_session ON admin_sessions (admin_id, session_id);`
+func (AdminSession) AfterCreateSchema(m psql.Model) string {
+	return fmt.Sprintf("CREATE UNIQUE INDEX unique_admin_session ON %s (%s, %s);",
+		m.TableName(), m.ToColumnName("AdminId"), m.ToColumnName("SessionId"))
+}
+
+func (AdminSession) DataType(m psql.Model, fieldName string) (dataType string) {
+	if fieldName == "SessionId" {
+		if m.Connection() != nil && m.Connection().DriverName() == "sqlite" {
+			dataType = "text NOT NULL DEFAULT (hex(randomblob(16)))"
+		} else {
+			dataType = "UUID NOT NULL DEFAULT gen_random_uuid()"
+		}
+	}
+	return
 }
 
 // NewAdmin creates new admin with name and password.

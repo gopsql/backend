@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gopsql/pagination/v2"
+	"github.com/gopsql/psql"
 )
 
 // NewFiberAdminsCtrl creates a simple admins controller for fiber.
@@ -21,6 +22,8 @@ type fiberAdminsCtrl struct {
 }
 
 func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
+	mAdmins := ctrl.backend.ModelByName("Admin")
+
 	q := pagination.PaginationQuerySort{
 		pagination.Pagination{
 			MaxPer:     50,
@@ -28,9 +31,9 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 		},
 		pagination.Query{},
 		pagination.Sort{
-			AllowedSorts: []string{
-				"name",
-				"created_at",
+			AllowedSorts: map[string]string{
+				"name":       mAdmins.ToColumnName("Name"),
+				"created_at": mAdmins.ToColumnName("CreatedAt"),
 			},
 			DefaultSort:  "created_at",
 			DefaultOrder: "asc",
@@ -41,13 +44,19 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 	var cond []string
 	var args []interface{}
 	if pattern := q.GetLikePattern(); pattern != "" {
-		cond = append(cond, "name ILIKE $?")
+		var like string
+		if mAdmins.Connection() != nil && mAdmins.Connection().DriverName() == "sqlite" {
+			like = "LIKE" // SQLite LIKE operator is case-insensitive
+		} else {
+			like = "ILIKE"
+		}
+		cond = append(cond, fmt.Sprintf("%s %s $?", mAdmins.ToColumnName("Name"), like))
 		args = append(args, pattern)
 	}
 	if c.Query("status") == "deleted" {
-		cond = append(cond, "deleted_at IS NOT NULL")
+		cond = append(cond, fmt.Sprintf("%s IS NOT NULL", mAdmins.ToColumnName("DeletedAt")))
 	} else {
-		cond = append(cond, "deleted_at IS NULL")
+		cond = append(cond, fmt.Sprintf("%s IS NULL", mAdmins.ToColumnName("DeletedAt")))
 	}
 
 	var sql string
@@ -57,8 +66,6 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 		}
 		sql = strings.Join(cond, " AND ")
 	}
-
-	mAdmins := ctrl.backend.ModelByName("Admin")
 
 	count := mAdmins.Where(sql, args...).MustCount()
 	admins := []Admin{}
@@ -70,9 +77,14 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 	}
 	var sessionsCountByAdminId map[int]int
 	if len(ids) > 0 {
-		mAdminSessions := ctrl.backend.ModelByName("AdminSession")
-		mAdminSessions.Where("admin_id = ANY($1)", ctrl.backend.toArray(ids)).
-			Select("admin_id, COUNT(*)").GroupBy("admin_id").MustQuery(&sessionsCountByAdminId)
+		m := ctrl.backend.ModelByName("AdminSession")
+		m.Select(m.ToColumnName("AdminId"), "COUNT(*)").Tap(func(s *psql.SelectSQL) *psql.SelectSQL {
+			var array []string
+			for _, id := range ids {
+				array = append(array, strconv.Itoa(id))
+			}
+			return s.Where(fmt.Sprintf("%s IN ($1)", m.ToColumnName("AdminId")), strings.Join(array, ","))
+		}).GroupBy(m.ToColumnName("AdminId")).MustQuery(&sessionsCountByAdminId)
 	}
 
 	res := struct {
@@ -96,10 +108,12 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 
 func (ctrl fiberAdminsCtrl) Show(c FiberCtx) error {
 	var admin Admin
-	ctrl.backend.ModelByName("Admin").Find().Where("id = $1", c.Params("id")).MustQuery(&admin)
+	m := ctrl.backend.ModelByName("Admin")
+	m.Find().Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), c.Params("id")).MustQuery(&admin)
 	u := NewSerializerAdmin(&admin)
 	if u != nil {
-		c := ctrl.backend.ModelByName("AdminSession").Where("admin_id = $1", admin.Id).MustCount()
+		c := ctrl.backend.ModelByName("AdminSession").
+			Where(fmt.Sprintf("%s = $1", m.ToColumnName("AdminId")), admin.Id).MustCount()
 		u.SessionsCount = &c
 	}
 	return c.JSON(u)
@@ -119,8 +133,8 @@ func (ctrl fiberAdminsCtrl) Create(c FiberCtx) error {
 		m.UpdatedAt(),
 	)
 	ctrl.backend.MustValidateStruct(admin)
-	m.Insert(changes...).Returning("id").MustQueryRow(&id)
-	m.Find().Where("id = $1", id).MustQuery(&admin)
+	m.Insert(changes...).Returning(m.ToColumnName("Id")).MustQueryRow(&id)
+	m.Find().Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), id).MustQuery(&admin)
 	return c.JSON(NewSerializerAdmin(&admin))
 }
 
@@ -134,19 +148,23 @@ func (ctrl fiberAdminsCtrl) Update(c FiberCtx) error {
 		m.UpdatedAt(),
 	)
 	ctrl.backend.MustValidateStruct(admin)
-	m.Update(changes...).Where("id = $1", admin.Id).MustExecute()
-	m.Find().Where("id = $1", admin.Id).MustQuery(&admin)
+	m.Update(changes...).Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), admin.Id).MustExecute()
+	m.Find().Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), admin.Id).MustQuery(&admin)
 	return c.JSON(NewSerializerAdmin(&admin))
 }
 
 func (ctrl fiberAdminsCtrl) Restore(c FiberCtx) error {
-	ctrl.backend.ModelByName("Admin").Update("DeletedAt", nil).Where("id = $1", c.Params("id")).MustExecute()
+	m := ctrl.backend.ModelByName("Admin")
+	m.Update("DeletedAt", nil).Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 
 func (ctrl fiberAdminsCtrl) Destroy(c FiberCtx) error {
-	ctrl.backend.ModelByName("Admin").Update("DeletedAt", time.Now()).Where("id = $1", c.Params("id")).MustExecute()
-	ctrl.backend.ModelByName("AdminSession").Delete().Where("admin_id = $1", c.Params("id")).MustExecute()
+	ma := ctrl.backend.ModelByName("Admin")
+	ma.Update("DeletedAt", time.Now().UTC().Truncate(time.Second)).
+		Where(fmt.Sprintf("%s = $1", ma.ToColumnName("Id")), c.Params("id")).MustExecute()
+	mas := ctrl.backend.ModelByName("AdminSession")
+	mas.Delete().Where(fmt.Sprintf("%s = $1", mas.ToColumnName("AdminId")), c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 

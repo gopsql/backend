@@ -14,7 +14,6 @@ import (
 )
 
 conn := pq.MustOpen("postgres://localhost:5432/mydb?sslmode=disable")
-backend.Default.SetToArray(pq.Array)
 backend.Default.SetConnection(conn)
 backend.Default.SetLogger(logger.StandardLogger)
 backend.Default.CheckAdmin()

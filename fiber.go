@@ -1,6 +1,9 @@
 package backend
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type (
 	// Interface for github.com/gofiber/fiber/v2.Ctx
@@ -30,12 +33,17 @@ func (backend Backend) FiberNewSession(c FiberCtx, adminId int) (token string, e
 		"AdminId", adminId,
 		"IpAddress", c.IP(),
 		"UserAgent", c.Get("User-Agent"),
-	).Returning("session_id").QueryRow(&sessionId)
+	).Returning(m.ToColumnName("SessionId")).QueryRow(&sessionId)
 	if err != nil {
 		return
 	}
-	err = m.Delete().Where("id IN (SELECT id FROM admin_sessions WHERE admin_id = $1 "+
-		"ORDER BY updated_at DESC OFFSET $2)", adminId, 10).Execute()
+	var limit string
+	if m.Connection() != nil && m.Connection().DriverName() == "sqlite" {
+		limit = "LIMIT -1" // SQLite must have LIMIT clause
+	}
+	sql := fmt.Sprintf("%[1]s IN (SELECT %[1]s FROM %s WHERE %s = $1 ORDER BY %s DESC %s OFFSET $2)",
+		m.ToColumnName("Id"), m.TableName(), m.ToColumnName("AdminId"), m.ToColumnName("UpdatedAt"), limit)
+	err = m.Delete().Where(sql, adminId, 10).Execute()
 	if err != nil {
 		return
 	}
@@ -55,8 +63,9 @@ func (backend Backend) MustFiberNewSession(c FiberCtx, adminId int) string {
 // FiberDeleteSession deletes a session in the database.
 func (backend Backend) FiberDeleteSession(c FiberCtx) error {
 	adminId, sessionId, _ := backend.FiberGetAdminAndSessionId(c)
-	return backend.ModelByName("AdminSession").Delete().
-		Where("admin_id = $1 AND session_id = $2", adminId, sessionId).Execute()
+	m := backend.ModelByName("AdminSession")
+	sql := fmt.Sprintf("%s = $1 AND %s = $2", m.ToColumnName("AdminId"), m.ToColumnName("SessionId"))
+	return m.Delete().Where(sql, adminId, sessionId).Execute()
 }
 
 // MustFiberDeleteSession is like FiberDeleteSession but panics if session
@@ -75,7 +84,8 @@ func (backend Backend) MustFiberValidateNewSession(c FiberCtx) string {
 	c.BodyParser(&req)
 	backend.MustValidateStruct(req)
 	var admin Admin
-	err := backend.ModelByName("Admin").Find().Where("lower(name) = $1", strings.ToLower(req.Name)).Query(&admin)
+	m := backend.ModelByName("Admin")
+	err := m.Find().Where(fmt.Sprintf("lower(%s) = $1", m.ToColumnName("Name")), strings.ToLower(req.Name)).Query(&admin)
 	if err != nil || !admin.Password.Equal(req.Password) {
 		panic(NewInputErrors("Password", "wrong"))
 	}
@@ -107,12 +117,14 @@ func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) *Admin {
 	admins := backend.ModelByName("Admin").Quiet()
 	adminSessions := backend.ModelByName("AdminSession").Quiet()
 	var admin Admin
-	err := admins.Find().Where("deleted_at IS NULL AND id = $1", adminId).Query(&admin)
+	err := admins.Find().Where(fmt.Sprintf("%s IS NULL AND %s = $1",
+		admins.ToColumnName("DeletedAt"), admins.ToColumnName("Id")), adminId).Query(&admin)
 	if err != nil {
 		return nil
 	}
 	var adminSession AdminSession
-	err = adminSessions.Find().Where("admin_id = $1 AND session_id = $2", adminId, sessionId).Query(&adminSession)
+	err = adminSessions.Find().Where(fmt.Sprintf("%s = $1 AND %s = $2",
+		admins.ToColumnName("AdminId"), admins.ToColumnName("SessionId")), adminId, sessionId).Query(&adminSession)
 	if err != nil {
 		return nil
 	}
@@ -124,7 +136,8 @@ func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) *Admin {
 		changes = append(changes, "UserAgent", ua)
 	}
 	if len(changes) > 0 {
-		if adminSessions.Update(changes...).Where("id = $1", adminSession.Id).Execute() != nil {
+		if adminSessions.Update(changes...).Where(
+			fmt.Sprintf("%s = $1", adminSessions.ToColumnName("Id")), adminSession.Id).Execute() != nil {
 			return nil
 		}
 	}

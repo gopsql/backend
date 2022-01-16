@@ -1,8 +1,6 @@
 package backend
 
 import (
-	"database/sql"
-	"database/sql/driver"
 	"flag"
 	"fmt"
 	"os"
@@ -26,7 +24,6 @@ type (
 		logger     logger.Logger
 		migrator   *migrator.Migrator
 		errNoRows  error
-		toArray    toArray
 	}
 
 	SQL       = psql.SQL
@@ -39,12 +36,6 @@ type (
 	jwtSession interface {
 		GenerateAuthorization(userId int, sessionId string) (string, error)
 		ParseAuthorization(auth string) (userId int, sessionId string, ok bool)
-	}
-
-	// github.com/lib/pq.Array
-	toArray func(interface{}) interface {
-		driver.Valuer
-		sql.Scanner
 	}
 )
 
@@ -93,11 +84,6 @@ func (backend *Backend) AddModels(models ...*psql.Model) {
 
 func (backend *Backend) SetName(name string) {
 	backend.Name = name
-}
-
-// SetToArray sets github.com/lib/pq.Array function.
-func (backend *Backend) SetToArray(f toArray) {
-	backend.toArray = f
 }
 
 // SetConnection sets database connection.

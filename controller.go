@@ -2,6 +2,7 @@ package backend
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -71,15 +72,26 @@ func (backend Backend) CheckAdmin() {
 		if name == "" {
 			name = "admin"
 			admin := NewAdmin(name, password)
-			m.Insert(m.Permit("Name", "Password").Filter(*admin)).OnConflict("lower(name)").
-				DoUpdate("deleted_at = NULL", "password = EXCLUDED.password").MustExecute()
+			var conflict string
+			if m.Connection() != nil && m.Connection().DriverName() == "sqlite" {
+				conflict = m.ToColumnName("Name")
+			} else {
+				conflict = fmt.Sprintf("lower(%s)", m.ToColumnName("Name"))
+			}
+			m.Insert(m.Permit("Name", "Password").Filter(*admin)).OnConflict(conflict).
+				DoUpdate(
+					fmt.Sprintf("%s = NULL", m.ToColumnName("DeletedAt")),
+					fmt.Sprintf("%[1]s = EXCLUDED.%[1]s", m.ToColumnName("Password")),
+				).MustExecute()
 			backend.logger.Info("New admin has been created:")
 			backend.logger.Info("  - name:", name)
 			backend.logger.Info("  - password:", password)
 		} else {
 			admin := NewAdmin(name, password)
 			admin.DeletedAt = nil
-			m.Update(m.Permit("Password", "DeletedAt").Filter(*admin)).Where("name = $1", name).MustExecute()
+			m.Update(m.Permit("Password", "DeletedAt").Filter(*admin)).Where(
+				fmt.Sprintf("%s = $1", m.ToColumnName("Name")), name,
+			).MustExecute()
 			backend.logger.Info("Password of admin has been reset:")
 			backend.logger.Info("  - name:", name)
 			backend.logger.Info("  - password:", password)
