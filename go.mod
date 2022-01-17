@@ -10,6 +10,6 @@ require (
 	github.com/gopsql/logger v1.0.0
 	github.com/gopsql/migrator v1.5.0
 	github.com/gopsql/pagination/v2 v2.2.0
-	github.com/gopsql/psql v1.8.1
+	github.com/gopsql/psql v1.8.2
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
 )
