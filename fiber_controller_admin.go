@@ -83,7 +83,7 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 			for _, id := range ids {
 				array = append(array, strconv.Itoa(id))
 			}
-			return s.Where(fmt.Sprintf("%s IN ($1)", m.ToColumnName("AdminId")), strings.Join(array, ","))
+			return s.Where(fmt.Sprintf("%s IN (%s)", m.ToColumnName("AdminId"), strings.Join(array, ",")))
 		}).GroupBy(m.ToColumnName("AdminId")).MustQuery(&sessionsCountByAdminId)
 	}
 

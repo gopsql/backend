@@ -23,7 +23,7 @@ type (
 		models     []*psql.Model
 		logger     logger.Logger
 		migrator   *migrator.Migrator
-		errNoRows  error
+		dbConn     db.DB
 	}
 
 	SQL       = psql.SQL
@@ -70,11 +70,11 @@ func (backend *Backend) NewModel(object interface{}, options ...interface{}) *ps
 }
 
 func (backend *Backend) AddModelAdmin() {
-	backend.NewModel(Admin{})
+	backend.NewModel(Admin{}, backend.dbConn, backend.logger)
 }
 
 func (backend *Backend) AddModelAdminSession() {
-	backend.NewModel(AdminSession{})
+	backend.NewModel(AdminSession{}, backend.dbConn, backend.logger)
 }
 
 // AddModels adds one or multiple psql.Model instances to backend.
@@ -88,7 +88,7 @@ func (backend *Backend) SetName(name string) {
 
 // SetConnection sets database connection.
 func (backend *Backend) SetConnection(dbConn db.DB) {
-	backend.errNoRows = dbConn.ErrNoRows()
+	backend.dbConn = dbConn
 	backend.migrator.SetConnection(dbConn)
 	for _, m := range backend.models {
 		m.SetConnection(dbConn)
@@ -110,6 +110,21 @@ func (backend *Backend) SetMigrations(migrations interface{}) {
 
 func (backend *Backend) SetJWTSession(jwtSession jwtSession) {
 	backend.jwtSession = jwtSession
+}
+
+func (backend *Backend) Migrator() *migrator.Migrator {
+	return backend.migrator
+}
+
+func (backend *Backend) MigratorNewMigration() (migrator.Migrations, error) {
+	if len(backend.models) == 0 {
+		return nil, nil
+	}
+	var models []migrator.PsqlModel
+	for _, m := range backend.models {
+		models = append(models, migrator.PsqlModel(m))
+	}
+	return backend.migrator.NewMigration(models...)
 }
 
 // ModelByName finds psql.Model by name.

@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gopsql/goconf"
-	"github.com/gopsql/migrator"
 )
 
 // ValidateStruct validates struct with github.com/go-playground/validator/v10.
@@ -30,7 +29,7 @@ func (backend Backend) MustValidateStruct(i interface{}) {
 }
 
 func (backend Backend) IsErrNoRows(err error) bool {
-	return backend.errNoRows != nil && backend.errNoRows == err
+	return backend.dbConn != nil && backend.dbConn.ErrNoRows() == err
 }
 
 // HandleError returns status code and error message given error.
@@ -58,46 +57,63 @@ func (backend Backend) HandleError(err error) (status int, json interface{}) {
 	return 500, struct{ Message string }{"Server Error"}
 }
 
+// Create new admin with adminName and adminPassword (random password if empty)
+// or reset password of admin with adminName to adminPassword. If adminName is
+// empty, only name of first admin in database is returned.
+func (backend Backend) CreateAdmin(adminName, adminPassword string) (name, password string, updated bool) {
+	m := backend.ModelByName("Admin").Quiet()
+	m.Select("name").OrderBy("id ASC").QueryRow(&name)
+	if adminName == "" {
+		return
+	}
+	if adminPassword == "" {
+		password = randomString(8)
+	} else {
+		password = adminPassword
+	}
+	if name == "" {
+		name = adminName
+		admin := NewAdmin(name, password)
+		var conflict string
+		if m.Connection() != nil && m.Connection().DriverName() == "sqlite" {
+			conflict = m.ToColumnName("Name")
+		} else {
+			conflict = fmt.Sprintf("lower(%s)", m.ToColumnName("Name"))
+		}
+		m.Insert(m.Permit("Name", "Password").Filter(*admin)).OnConflict(conflict).
+			DoUpdate(
+				fmt.Sprintf("%s = NULL", m.ToColumnName("DeletedAt")),
+				fmt.Sprintf("%[1]s = EXCLUDED.%[1]s", m.ToColumnName("Password")),
+			).MustExecute()
+	} else {
+		admin := NewAdmin(name, password)
+		admin.DeletedAt = nil
+		m.Update(m.Permit("Password", "DeletedAt").Filter(*admin)).Where(
+			fmt.Sprintf("%s = $1", m.ToColumnName("Name")), name,
+		).MustExecute()
+		updated = true
+	}
+	return
+}
+
 // CheckAdmin prints a warning if database contains no admins. If
 // CREATE_ADMIN=1 environment variable is set, creates new admin or resets
 // existing admin's password.
 func (backend Backend) CheckAdmin() {
-	m := backend.ModelByName("Admin").Quiet()
-
-	var name string
-	m.Select("name").OrderBy("id ASC").QueryRow(&name)
-
 	if os.Getenv("CREATE_ADMIN") == "1" {
-		password := randomString(8)
-		if name == "" {
-			name = "admin"
-			admin := NewAdmin(name, password)
-			var conflict string
-			if m.Connection() != nil && m.Connection().DriverName() == "sqlite" {
-				conflict = m.ToColumnName("Name")
-			} else {
-				conflict = fmt.Sprintf("lower(%s)", m.ToColumnName("Name"))
-			}
-			m.Insert(m.Permit("Name", "Password").Filter(*admin)).OnConflict(conflict).
-				DoUpdate(
-					fmt.Sprintf("%s = NULL", m.ToColumnName("DeletedAt")),
-					fmt.Sprintf("%[1]s = EXCLUDED.%[1]s", m.ToColumnName("Password")),
-				).MustExecute()
-			backend.logger.Info("New admin has been created:")
+		name, password, updated := backend.CreateAdmin("admin", "")
+		if updated {
+			backend.logger.Info("Password of admin has been reset:")
 			backend.logger.Info("  - name:", name)
 			backend.logger.Info("  - password:", password)
 		} else {
-			admin := NewAdmin(name, password)
-			admin.DeletedAt = nil
-			m.Update(m.Permit("Password", "DeletedAt").Filter(*admin)).Where(
-				fmt.Sprintf("%s = $1", m.ToColumnName("Name")), name,
-			).MustExecute()
-			backend.logger.Info("Password of admin has been reset:")
+			backend.logger.Info("New admin has been created:")
 			backend.logger.Info("  - name:", name)
 			backend.logger.Info("  - password:", password)
 		}
 		os.Exit(0)
 	} else {
+		name, _, _ := backend.CreateAdmin("", "")
 		if name == "" {
 			backend.logger.Warning("Warning: You have no admins. Use CREATE_ADMIN=1 to create one.")
 		}
@@ -120,14 +136,8 @@ func randomString(n int) string {
 // migrations that have not yet been run. If ROLLBACK=1 environment variable
 // is set, rollback last migration.
 func (backend Backend) CheckMigrations() {
-	m := backend.migrator
-
 	if os.Getenv("CREATE_MIGRATION") == "1" {
-		var models []migrator.PsqlModel
-		for _, m := range backend.models {
-			models = append(models, migrator.PsqlModel(m))
-		}
-		migrations, err := m.NewMigration(models...)
+		migrations, err := backend.MigratorNewMigration()
 		if err != nil {
 			backend.logger.Fatal(err)
 		}
@@ -146,17 +156,17 @@ func (backend Backend) CheckMigrations() {
 		os.Exit(0)
 	}
 
-	if _, unmigrated := m.Versions(); len(unmigrated) > 0 {
+	if _, unmigrated := backend.migrator.Versions(); len(unmigrated) > 0 {
 		backend.logger.Warning("Warning: You have", len(unmigrated), "pending migrations. Use MIGRATE=1 to run migrations.")
 	}
 
 	if os.Getenv("MIGRATE") == "1" {
-		m.Migrate()
+		backend.migrator.Migrate()
 		os.Exit(0)
 	}
 
 	if os.Getenv("ROLLBACK") == "1" {
-		m.Rollback()
+		backend.migrator.Rollback()
 		os.Exit(0)
 	}
 }
