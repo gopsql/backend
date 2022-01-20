@@ -26,6 +26,10 @@ type (
 		dbConn     db.DB
 	}
 
+	// These types are copied from the psql package, so that code that
+	// imports "github.com/gopsql/backend" does not also have to import
+	// "github.com/gopsql/psql".
+	Model     = psql.Model
 	SQL       = psql.SQL
 	SelectSQL = psql.SelectSQL
 	InsertSQL = psql.InsertSQL
