@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -212,6 +213,9 @@ func writeFile(file string, conf interface{}) error {
 	content, err := goconf.Marshal(conf)
 	if err != nil {
 		return err
+	}
+	if !strings.HasSuffix(file, ".go") {
+		content = append([]byte("// vi: set filetype=go :\n"), content...)
 	}
 	return ioutil.WriteFile(file, content, 0600)
 }
