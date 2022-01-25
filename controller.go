@@ -173,7 +173,8 @@ func (backend Backend) CheckMigrations() {
 }
 
 // ReadConfigs uses github.com/gopsql/goconf to read config file into target
-// config struct.
+// config struct. This will create or update config file if environment
+// variable CREATE_CONFIG is set to 1.
 func (backend Backend) ReadConfigs(configFile string, target interface{}) {
 	toCreate := os.Getenv("CREATE_CONFIG") == "1"
 	err := readFile(configFile, target)
@@ -189,6 +190,18 @@ func (backend Backend) ReadConfigs(configFile string, target interface{}) {
 		backend.logger.Warning("Warning: Error reading config file:", err)
 		backend.logger.Warning("Use CREATE_CONFIG=1 create or update config file.")
 	}
+}
+
+// ReadConfigFile uses github.com/gopsql/goconf to read config file into target
+// config struct.
+func (backend Backend) ReadConfigFile(configFile string, target interface{}) error {
+	return readFile(configFile, target)
+}
+
+// WriteConfigFile uses github.com/gopsql/goconf to write config file with
+// target config struct.
+func (backend Backend) WriteConfigFile(configFile string, target interface{}) error {
+	return writeFile(configFile, target)
 }
 
 type canSetDefaultValues interface {
