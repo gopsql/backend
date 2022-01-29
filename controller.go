@@ -1,12 +1,14 @@
 package backend
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -14,10 +16,32 @@ import (
 	"github.com/gopsql/goconf"
 )
 
-// ValidateStruct validates struct with github.com/go-playground/validator/v10.
+// ValidateStruct validates struct or slice of structs with the validator
+// (github.com/go-playground/validator/v10). If slice of struct is provided,
+// each struct will be validated and nil or ValidatorFieldErrors is returned.
+// ValidatorFieldErrors contains the indexes of the erroneous structs.
 func (backend Backend) ValidateStruct(i interface{}) error {
 	if backend.Validator == nil {
 		return errors.New("no validator")
+	}
+	if reflect.TypeOf(i).Kind() == reflect.Slice {
+		var verrs ValidatorFieldErrors
+		rv := reflect.ValueOf(i)
+		for i := 0; i < rv.Len(); i++ {
+			err := backend.Validator.Struct(rv.Index(i).Interface())
+			if err == nil {
+				continue
+			}
+			if errs, ok := err.(validator.ValidationErrors); ok {
+				for _, err := range errs {
+					verrs = append(verrs, ValidatorFieldError{err, i})
+				}
+			}
+		}
+		if len(verrs) == 0 {
+			return nil
+		}
+		return verrs
 	}
 	return backend.Validator.Struct(i)
 }
@@ -29,30 +53,69 @@ func (backend Backend) MustValidateStruct(i interface{}) {
 	}
 }
 
+type (
+	// ValidatorFieldErrors can be returned when validating a slice of
+	// struct using ValidateStruct().
+	ValidatorFieldErrors []ValidatorFieldError
+
+	// ValidatorFieldError contains the FieldError of the validator
+	// (github.com/go-playground/validator/v10) and index of the struct in
+	// the slice.
+	ValidatorFieldError struct {
+		FieldError validator.FieldError
+		Index      int
+	}
+)
+
+func (errs ValidatorFieldErrors) Error() string {
+	buf := bytes.NewBufferString("")
+	for i := 0; i < len(errs); i++ {
+		buf.WriteString(errs[i].Error())
+		buf.WriteString("\n")
+	}
+	return strings.TrimSpace(buf.String())
+}
+
+func (v ValidatorFieldError) Error() string {
+	return v.FieldError.Error()
+}
+
+func validatorFieldErrorToInputError(e validator.FieldError) InputError {
+	return InputError{
+		FullName: e.Namespace(),
+		Name:     e.Field(),
+		Kind:     e.Kind().String(),
+		Type:     e.Tag(),
+		Param:    e.Param(),
+	}
+}
+
+// Check if given error equals to ErrNoRows() of the database connection.
 func (backend Backend) IsErrNoRows(err error) bool {
 	return backend.dbConn != nil && backend.dbConn.ErrNoRows() == err
 }
 
-// HandleError returns status code and error message given error.
+// HandleError returns status code and error message struct according to the
+// given error.
 func (backend Backend) HandleError(err error) (status int, json interface{}) {
 	if backend.IsErrNoRows(err) {
 		return 404, struct{ Message string }{"Not Found"}
 	}
-	if errs, ok := err.(InputErrors); ok {
+	switch errs := err.(type) {
+	case InputErrors:
 		return 400, map[string]interface{}{"Errors": errs}
-	}
-	if err, ok := err.(validator.ValidationErrors); ok {
-		var errs InputErrors
-		for _, e := range err {
-			errs = append(errs, InputError{
-				FullName: e.Namespace(),
-				Name:     e.Field(),
-				Kind:     e.Kind().String(),
-				Type:     e.Tag(),
-				Param:    e.Param(),
-			})
+	case validator.ValidationErrors:
+		var ierrs InputErrors
+		for _, e := range errs {
+			ierrs = append(ierrs, validatorFieldErrorToInputError(e))
 		}
-		return 400, map[string]interface{}{"Errors": errs}
+		return 400, map[string]interface{}{"Errors": ierrs}
+	case ValidatorFieldErrors:
+		var ierrs []InputErrorWithIndex
+		for _, e := range errs {
+			ierrs = append(ierrs, InputErrorWithIndex{validatorFieldErrorToInputError(e.FieldError), e.Index})
+		}
+		return 400, map[string]interface{}{"Errors": ierrs}
 	}
 	backend.logger.Error("Server Error:", err)
 	return 500, struct{ Message string }{"Server Error"}

@@ -14,6 +14,12 @@ type (
 		Type     string
 		Param    string
 	}
+
+	// InputErrorWithIndex contains InputError and struct index in a slice.
+	InputErrorWithIndex struct {
+		InputError
+		Index int
+	}
 )
 
 func (err InputError) Error() string {
