@@ -6,7 +6,7 @@ require (
 	github.com/go-playground/validator/v10 v10.9.0
 	github.com/gopsql/bcrypt v1.0.0
 	github.com/gopsql/db v1.2.1
-	github.com/gopsql/goconf v1.2.0
+	github.com/gopsql/goconf v1.2.1
 	github.com/gopsql/logger v1.0.0
 	github.com/gopsql/migrator v1.5.0
 	github.com/gopsql/pagination/v2 v2.2.0
