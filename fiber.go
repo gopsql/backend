@@ -13,7 +13,7 @@ type (
 		Get(key string, defaultValue ...string) string
 		IP() string
 		JSON(data interface{}) error
-		Locals(key string, value ...interface{}) (val interface{})
+		Locals(key interface{}, value ...interface{}) (val interface{})
 		Next() (err error)
 		Params(key string, defaultValue ...string) string
 		Query(key string, defaultValue ...string) string
