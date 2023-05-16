@@ -210,12 +210,21 @@ func (backend Backend) CheckMigrations() {
 			backend.logger.Fatal(err)
 		}
 		for _, migration := range migrations {
-			path := filepath.Join(dir, migration.FileName())
-			err := ioutil.WriteFile(path, []byte(migration.String()), 0644)
+			var action, content string
+			var path string = filepath.Join(dir, migration.FileName(-1))
+			if _, err := os.Stat(path); err == nil { // overwrite existing
+				content = migration.String(-1)
+				action = "overwritten"
+			} else { // create new
+				path = filepath.Join(dir, migration.FileName())
+				content = migration.String()
+				action = "created"
+			}
+			err := ioutil.WriteFile(path, []byte(content), 0644)
 			if err != nil {
 				backend.logger.Fatal(err)
 			}
-			backend.logger.Info("written", path)
+			backend.logger.Info(action, path)
 		}
 		os.Exit(0)
 	}
