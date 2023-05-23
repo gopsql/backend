@@ -109,11 +109,10 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 func (ctrl fiberAdminsCtrl) Show(c FiberCtx) error {
 	var admin Admin
 	m := ctrl.backend.ModelByName("Admin")
-	m.Find().Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), c.Params("id")).MustQuery(&admin)
+	m.Find().WHERE("Id", "=", c.Params("id")).MustQuery(&admin)
 	u := NewSerializerAdmin(&admin)
 	if u != nil {
-		c := ctrl.backend.ModelByName("AdminSession").
-			Where(fmt.Sprintf("%s = $1", m.ToColumnName("AdminId")), admin.Id).MustCount()
+		c := ctrl.backend.ModelByName("AdminSession").WHERE("AdminId", "=", admin.Id).MustCount()
 		u.SessionsCount = &c
 	}
 	return c.JSON(u)
@@ -134,7 +133,7 @@ func (ctrl fiberAdminsCtrl) Create(c FiberCtx) error {
 	)
 	ctrl.backend.MustValidateStruct(admin)
 	m.Insert(changes...).Returning(m.ToColumnName("Id")).MustQueryRow(&id)
-	m.Find().Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), id).MustQuery(&admin)
+	m.Find().WHERE("Id", "=", id).MustQuery(&admin)
 	return c.JSON(NewSerializerAdmin(&admin))
 }
 
@@ -148,23 +147,23 @@ func (ctrl fiberAdminsCtrl) Update(c FiberCtx) error {
 		m.UpdatedAt(),
 	)
 	ctrl.backend.MustValidateStruct(admin)
-	m.Update(changes...).Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), admin.Id).MustExecute()
-	m.Find().Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), admin.Id).MustQuery(&admin)
+	m.Update(changes...).WHERE("Id", "=", admin.Id).MustExecute()
+	m.Find().WHERE("Id", "=", admin.Id).MustQuery(&admin)
 	return c.JSON(NewSerializerAdmin(&admin))
 }
 
 func (ctrl fiberAdminsCtrl) Restore(c FiberCtx) error {
 	m := ctrl.backend.ModelByName("Admin")
-	m.Update("DeletedAt", nil).Where(fmt.Sprintf("%s = $1", m.ToColumnName("Id")), c.Params("id")).MustExecute()
+	m.Update("DeletedAt", nil).WHERE("Id", "=", c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 
 func (ctrl fiberAdminsCtrl) Destroy(c FiberCtx) error {
 	ma := ctrl.backend.ModelByName("Admin")
 	ma.Update("DeletedAt", time.Now().UTC().Truncate(time.Second)).
-		Where(fmt.Sprintf("%s = $1", ma.ToColumnName("Id")), c.Params("id")).MustExecute()
+		WHERE("Id", "=", c.Params("id")).MustExecute()
 	mas := ctrl.backend.ModelByName("AdminSession")
-	mas.Delete().Where(fmt.Sprintf("%s = $1", mas.ToColumnName("AdminId")), c.Params("id")).MustExecute()
+	mas.Delete().WHERE("AdminId", "=", c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 

@@ -63,9 +63,7 @@ func (backend Backend) MustFiberNewSession(c FiberCtx, adminId int) string {
 // FiberDeleteSession deletes a session in the database.
 func (backend Backend) FiberDeleteSession(c FiberCtx) error {
 	adminId, sessionId, _ := backend.FiberGetAdminAndSessionId(c)
-	m := backend.ModelByName("AdminSession")
-	sql := fmt.Sprintf("%s = $1 AND %s = $2", m.ToColumnName("AdminId"), m.ToColumnName("SessionId"))
-	return m.Delete().Where(sql, adminId, sessionId).Execute()
+	return backend.ModelByName("AdminSession").Delete().WHERE("AdminId", "=", adminId, "SessionId", "=", sessionId).Execute()
 }
 
 // MustFiberDeleteSession is like FiberDeleteSession but panics if session
@@ -123,8 +121,7 @@ func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) *Admin {
 		return nil
 	}
 	var adminSession AdminSession
-	err = adminSessions.Find().Where(fmt.Sprintf("%s = $1 AND %s = $2",
-		admins.ToColumnName("AdminId"), admins.ToColumnName("SessionId")), adminId, sessionId).Query(&adminSession)
+	err = adminSessions.Find().WHERE("AdminId", "=", adminId, "SessionId", "=", sessionId).Query(&adminSession)
 	if err != nil {
 		return nil
 	}
@@ -136,8 +133,7 @@ func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) *Admin {
 		changes = append(changes, "UserAgent", ua)
 	}
 	if len(changes) > 0 {
-		if adminSessions.Update(changes...).Where(
-			fmt.Sprintf("%s = $1", adminSessions.ToColumnName("Id")), adminSession.Id).Execute() != nil {
+		if adminSessions.Update(changes...).WHERE("Id", "=", adminSession.Id).Execute() != nil {
 			return nil
 		}
 	}

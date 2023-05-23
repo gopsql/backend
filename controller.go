@@ -152,9 +152,7 @@ func (backend Backend) CreateAdmin(adminName, adminPassword string) (name, passw
 	} else {
 		admin := NewAdmin(name, password)
 		admin.DeletedAt = nil
-		m.Update(m.Permit("Password", "DeletedAt").Filter(*admin)).Where(
-			fmt.Sprintf("%s = $1", m.ToColumnName("Name")), name,
-		).MustExecute()
+		m.Update(m.Permit("Password", "DeletedAt").Filter(*admin)).WHERE("Name", "=", name).MustExecute()
 		updated = true
 	}
 	return
