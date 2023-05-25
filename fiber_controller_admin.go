@@ -68,102 +68,99 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 	}
 
 	count := mAdmins.Where(sql, args...).MustCount()
-	admins := []Admin{}
-	mAdmins.Find().Where(sql, args...).OrderBy(q.OrderByValue()).Limit(q.Limit()).Offset(q.Offset()).MustQuery(&admins)
+	admins := mAdmins.NewSlice()
+	mAdmins.Find().Where(sql, args...).OrderBy(q.OrderByValue()).Limit(q.Limit()).Offset(q.Offset()).MustQuery(admins.Interface())
 
-	var ids []int
-	for _, admin := range admins {
-		ids = append(ids, admin.Id)
+	ret := struct {
+		Admins        []interface{}
+		SessionsCount map[int]int
+		Pagination    pagination.PaginationQuerySortResult
+	}{Pagination: q.PaginationQuerySortResult(count)}
+
+	var ids []string
+	for i := 0; i < admins.Elem().Len(); i++ {
+		elem := admins.Elem().Index(i).Interface()
+		if admin, ok := elem.(Serializable); ok {
+			ret.Admins = append(ret.Admins, admin.Serialize("list"))
+		} else {
+			ret.Admins = append(ret.Admins, elem)
+		}
+		if admin, ok := elem.(IsAdmin); ok {
+			ids = append(ids, strconv.Itoa(admin.GetId()))
+		}
 	}
-	var sessionsCountByAdminId map[int]int
+
 	if len(ids) > 0 {
 		m := ctrl.backend.ModelByName("AdminSession")
 		m.Select(m.ToColumnName("AdminId"), "COUNT(*)").Tap(func(s *psql.SelectSQL) *psql.SelectSQL {
-			var array []string
-			for _, id := range ids {
-				array = append(array, strconv.Itoa(id))
-			}
-			return s.Where(fmt.Sprintf("%s IN (%s)", m.ToColumnName("AdminId"), strings.Join(array, ",")))
-		}).GroupBy(m.ToColumnName("AdminId")).MustQuery(&sessionsCountByAdminId)
+			return s.Where(fmt.Sprintf("%s IN (%s)", m.ToColumnName("AdminId"), strings.Join(ids, ",")))
+		}).GroupBy(m.ToColumnName("AdminId")).MustQuery(&ret.SessionsCount)
 	}
 
-	res := struct {
-		Admins     []SerializerAdmin
-		Pagination pagination.PaginationQuerySortResult
-	}{}
-	res.Admins = []SerializerAdmin{}
-	res.Pagination = q.PaginationQuerySortResult(count)
-	for _, admin := range admins {
-		a := NewSerializerAdmin(&admin)
-		if a == nil {
-			continue
-		}
-		c := sessionsCountByAdminId[a.Id]
-		a.SessionsCount = &c
-		res.Admins = append(res.Admins, *a)
-	}
-
-	return c.JSON(res)
+	return c.JSON(ret)
 }
 
 func (ctrl fiberAdminsCtrl) Show(c FiberCtx) error {
-	var admin Admin
 	m := ctrl.backend.ModelByName("Admin")
-	m.Find().WHERE("Id", "=", c.Params("id")).MustQuery(&admin)
-	u := NewSerializerAdmin(&admin)
-	if u != nil {
-		c := ctrl.backend.ModelByName("AdminSession").WHERE("AdminId", "=", admin.Id).MustCount()
-		u.SessionsCount = &c
+	admin := m.New().Interface()
+	m.Find().WHERE("Id", "=", c.Params("id")).MustQuery(admin)
+	if u, ok := admin.(Serializable); ok {
+		return c.JSON(u.Serialize("show"))
 	}
-	return c.JSON(u)
+	return c.JSON(admin)
 }
 
 func (ctrl fiberAdminsCtrl) Create(c FiberCtx) error {
-	var admin Admin
+	m := ctrl.backend.ModelByName("Admin")
+	admin := m.New().Interface()
 	if c.Get("Content-Length") == "0" {
-		return c.JSON(NewSerializerAdmin(&admin))
+		if u, ok := admin.(Serializable); ok {
+			return c.JSON(u.Serialize("show"))
+		}
+		return c.JSON(admin)
 	}
 	var id int
-	m := ctrl.backend.ModelByName("Admin")
 	changes := m.MustAssign(
-		&admin,
+		admin,
 		m.Permit(ctrl.params()...).Filter(c.Body()),
 		m.CreatedAt(),
 		m.UpdatedAt(),
 	)
 	ctrl.backend.MustValidateStruct(admin)
 	m.Insert(changes...).Returning(m.ToColumnName("Id")).MustQueryRow(&id)
-	m.Find().WHERE("Id", "=", id).MustQuery(&admin)
-	return c.JSON(NewSerializerAdmin(&admin))
+	m.Find().WHERE("Id", "=", id).MustQuery(admin)
+	return c.JSON(admin)
 }
 
 func (ctrl fiberAdminsCtrl) Update(c FiberCtx) error {
-	var admin Admin
-	admin.Id, _ = strconv.Atoi(c.Params("id"))
+	id, _ := strconv.Atoi(c.Params("id"))
 	m := ctrl.backend.ModelByName("Admin")
+	admin := m.New().Interface()
+	if admin, ok := admin.(IsAdmin); ok {
+		admin.SetId(id)
+	}
 	changes := m.MustAssign(
-		&admin,
+		admin,
 		m.Permit(ctrl.params()...).Filter(c.Body()),
 		m.UpdatedAt(),
 	)
 	ctrl.backend.MustValidateStruct(admin)
-	m.Update(changes...).WHERE("Id", "=", admin.Id).MustExecute()
-	m.Find().WHERE("Id", "=", admin.Id).MustQuery(&admin)
-	return c.JSON(NewSerializerAdmin(&admin))
+	m.Update(changes...).WHERE("Id", "=", id).MustExecute()
+	m.Find().WHERE("Id", "=", id).MustQuery(admin)
+	return c.JSON(admin)
 }
 
 func (ctrl fiberAdminsCtrl) Restore(c FiberCtx) error {
-	m := ctrl.backend.ModelByName("Admin")
-	m.Update("DeletedAt", nil).WHERE("Id", "=", c.Params("id")).MustExecute()
+	ctrl.backend.ModelByName("Admin").Update("DeletedAt", nil).WHERE("Id", "=", c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 
 func (ctrl fiberAdminsCtrl) Destroy(c FiberCtx) error {
-	ma := ctrl.backend.ModelByName("Admin")
-	ma.Update("DeletedAt", time.Now().UTC().Truncate(time.Second)).
+	ctrl.backend.ModelByName("Admin").
+		Update("DeletedAt", time.Now().UTC().Truncate(time.Second)).
 		WHERE("Id", "=", c.Params("id")).MustExecute()
-	mas := ctrl.backend.ModelByName("AdminSession")
-	mas.Delete().WHERE("AdminId", "=", c.Params("id")).MustExecute()
+	ctrl.backend.ModelByName("AdminSession").
+		Delete().WHERE("AdminId", "=", c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 

@@ -126,6 +126,12 @@ func (backend Backend) HandleError(err error) (status int, json interface{}) {
 // empty, only name of first admin in database is returned.
 func (backend Backend) CreateAdmin(adminName, adminPassword string) (name, password string, updated bool) {
 	m := backend.ModelByName("Admin").Quiet()
+	var admin IsAdmin
+	if a, ok := m.New().Interface().(IsAdmin); ok {
+		admin = a
+	} else {
+		backend.logger.Fatal("no admin model")
+	}
 	m.Select("name").OrderBy("id ASC").QueryRow(&name)
 	if adminName == "" {
 		return
@@ -137,22 +143,22 @@ func (backend Backend) CreateAdmin(adminName, adminPassword string) (name, passw
 	}
 	if name == "" {
 		name = adminName
-		admin := NewAdmin(name, password)
+		admin.SetName(name)
+		admin.SetPassword(password)
 		var conflict string
 		if m.Connection() != nil && m.Connection().DriverName() == "sqlite" {
 			conflict = m.ToColumnName("Name")
 		} else {
 			conflict = fmt.Sprintf("lower(%s)", m.ToColumnName("Name"))
 		}
-		m.Insert(m.Permit("Name", "Password").Filter(*admin)).OnConflict(conflict).
+		m.Insert("Name", admin.GetName(), "Password", admin.GetPassword()).OnConflict(conflict).
 			DoUpdate(
 				fmt.Sprintf("%s = NULL", m.ToColumnName("DeletedAt")),
 				fmt.Sprintf("%[1]s = EXCLUDED.%[1]s", m.ToColumnName("Password")),
 			).MustExecute()
 	} else {
-		admin := NewAdmin(name, password)
-		admin.DeletedAt = nil
-		m.Update(m.Permit("Password", "DeletedAt").Filter(*admin)).WHERE("Name", "=", name).MustExecute()
+		admin.SetPassword(password)
+		m.Update("Password", admin.GetPassword(), "DeletedAt", nil).WHERE("Name", "=", name).MustExecute()
 		updated = true
 	}
 	return

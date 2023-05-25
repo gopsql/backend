@@ -29,12 +29,11 @@ func testAdmins(t *test) {
 	t.Bool("token size greater than 0", len(token.Token) > 0, true)
 
 	type Admin struct {
-		Id            int
-		Name          string
-		CreatedAt     time.Time
-		UpdatedAt     time.Time
-		DeletedAt     *time.Time
-		SessionsCount *int
+		Id        int
+		Name      string
+		CreatedAt time.Time
+		UpdatedAt time.Time
+		DeletedAt *time.Time
 	}
 
 	var list struct {
@@ -65,15 +64,12 @@ func testAdmins(t *test) {
 
 	var showAdmin Admin
 	t.Request(httptest.NewRequest("GET", adminPath, nil), 200, &showAdmin, token)
-	showAdmin.SessionsCount = nil
 	t.Bool("admin equal", newAdmin == showAdmin, true)
 
 	t.Request(httptest.NewRequest("GET", "/admins", nil), 200, &list, token)
 	t.Int("list size", len(list.Admins), 2)
 	t.String("admin name", list.Admins[0].Name, "admin")
-	t.Int("admin sessions count", *list.Admins[0].SessionsCount, 1)
 	t.String("admin name", list.Admins[1].Name, "foobar")
-	t.Int("admin sessions count", *list.Admins[1].SessionsCount, 0)
 
 	t.Request(httptest.NewRequest("GET", "/admins?sort=created_at&order=desc", nil), 200, &list, token)
 	t.String("admin name", list.Admins[0].Name, "foobar")

@@ -3,6 +3,9 @@ package backend
 import (
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/gopsql/bcrypt"
 )
 
 type (
@@ -81,16 +84,20 @@ func (backend Backend) MustFiberValidateNewSession(c FiberCtx) string {
 	}
 	c.BodyParser(&req)
 	backend.MustValidateStruct(req)
-	var admin Admin
+	var id int
+	var password bcrypt.Password
+	var deletedAt *time.Time
 	m := backend.ModelByName("Admin")
-	err := m.Find().Where(fmt.Sprintf("lower(%s) = $1", m.ToColumnName("Name")), strings.ToLower(req.Name)).Query(&admin)
-	if err != nil || !admin.Password.Equal(req.Password) {
+	err := m.Select("Id", "Password", "DeletedAt").
+		Where(fmt.Sprintf("lower(%s) = $1", m.ToColumnName("Name")), strings.ToLower(req.Name)).
+		QueryRow(&id, &password, &deletedAt)
+	if err != nil || !password.Equal(req.Password) {
 		panic(NewInputErrors("Password", "wrong"))
 	}
-	if admin.DeletedAt != nil {
+	if deletedAt != nil {
 		panic(NewInputErrors("Name", "deleted"))
 	}
-	return backend.MustFiberNewSession(c, admin.Id)
+	return backend.MustFiberNewSession(c, id)
 }
 
 // FiberGetAdminAndSessionId returns the admin and session ID from the
@@ -104,8 +111,8 @@ func (backend Backend) FiberGetAdminAndSessionId(c FiberCtx) (adminId int, sessi
 // Authorization header of a fiber context. The returned admin is then cached
 // in the current request, so subsequent calls of this function will not cause
 // new database queries.
-func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) *Admin {
-	if admin, ok := c.Locals("CurrentAdmin").(*Admin); ok && admin != nil {
+func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) interface{} {
+	if admin := c.Locals("CurrentAdmin"); admin != nil {
 		return admin
 	}
 	adminId, sessionId, ok := backend.FiberGetAdminAndSessionId(c)
@@ -114,9 +121,9 @@ func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) *Admin {
 	}
 	admins := backend.ModelByName("Admin").Quiet()
 	adminSessions := backend.ModelByName("AdminSession").Quiet()
-	var admin Admin
+	admin := admins.New().Interface()
 	err := admins.Find().Where(fmt.Sprintf("%s IS NULL AND %s = $1",
-		admins.ToColumnName("DeletedAt"), admins.ToColumnName("Id")), adminId).Query(&admin)
+		admins.ToColumnName("DeletedAt"), admins.ToColumnName("Id")), adminId).Query(admin)
 	if err != nil {
 		return nil
 	}
@@ -137,6 +144,6 @@ func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) *Admin {
 			return nil
 		}
 	}
-	c.Locals("CurrentAdmin", &admin)
-	return &admin
+	c.Locals("CurrentAdmin", admin)
+	return admin
 }

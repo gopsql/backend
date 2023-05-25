@@ -23,7 +23,11 @@ func (ctrl fiberSessionsCtrl) Authenticate(c FiberCtx) error {
 }
 
 func (ctrl fiberSessionsCtrl) Me(c FiberCtx) error {
-	return c.JSON(NewSerializerAdminSimple(ctrl.backend.FiberGetCurrentAdmin(c)))
+	admin := ctrl.backend.FiberGetCurrentAdmin(c)
+	if a, ok := admin.(Serializable); ok {
+		return c.JSON(a.Serialize("me"))
+	}
+	return c.JSON(admin)
 }
 
 func (ctrl fiberSessionsCtrl) SignIn(c FiberCtx) error {

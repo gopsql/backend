@@ -31,24 +31,42 @@ type (
 		UpdatedAt time.Time
 	}
 
-	// Used in admins controller.
-	SerializerAdmin struct {
-		Id        int
-		Name      string
-		Password  *string
-		CreatedAt time.Time
-		UpdatedAt time.Time
-		DeletedAt *time.Time
-
-		SessionsCount *int
+	IsAdmin interface {
+		GetId() int
+		GetName() string
+		GetPassword() bcrypt.Password
+		GetCreatedAt() time.Time
+		GetUpdatedAt() time.Time
+		GetDeletedAt() *time.Time
+		SetId(int)
+		SetName(string)
+		SetPassword(string) error
+		SetCreatedAt(time.Time)
+		SetUpdatedAt(time.Time)
+		SetDeletedAt(*time.Time)
 	}
 
-	// Used in admin sessions controller.
-	SerializerAdminSimple struct {
-		Id   int
-		Name string
+	Serializable interface {
+		Serialize(typ string, data ...interface{}) interface{}
 	}
 )
+
+var (
+	_ IsAdmin = (*Admin)(nil)
+)
+
+func (a Admin) GetId() int                         { return a.Id }
+func (a Admin) GetName() string                    { return a.Name }
+func (a Admin) GetPassword() bcrypt.Password       { return a.Password }
+func (a Admin) GetCreatedAt() time.Time            { return a.CreatedAt }
+func (a Admin) GetUpdatedAt() time.Time            { return a.UpdatedAt }
+func (a Admin) GetDeletedAt() *time.Time           { return a.DeletedAt }
+func (a *Admin) SetId(id int)                      { a.Id = id }
+func (a *Admin) SetName(name string)               { a.Name = name }
+func (a *Admin) SetPassword(password string) error { return a.Password.Update(password) }
+func (a *Admin) SetCreatedAt(createdAt time.Time)  { a.CreatedAt = createdAt }
+func (a *Admin) SetUpdatedAt(updatedAt time.Time)  { a.UpdatedAt = updatedAt }
+func (a *Admin) SetDeletedAt(deletedAt *time.Time) { a.DeletedAt = deletedAt }
 
 func (Admin) AfterCreateSchema(m psql.Model) string {
 	if m.Connection().DriverName() == "sqlite" {
@@ -78,6 +96,28 @@ func (a Admin) IsUnique(backend *Backend, field string) bool { // uniqueness
 	return true
 }
 
+var (
+	_ Serializable = (*Admin)(nil)
+)
+
+type (
+	adminForMe struct {
+		Id   int
+		Name string
+	}
+)
+
+func (a Admin) Serialize(typ string, data ...interface{}) interface{} {
+	switch typ {
+	case "me":
+		return adminForMe{
+			Id:   a.Id,
+			Name: a.Name,
+		}
+	}
+	return a
+}
+
 func (AdminSession) AfterCreateSchema(m psql.Model) string {
 	return fmt.Sprintf("CREATE UNIQUE INDEX unique_admin_session ON %s (%s, %s);",
 		m.TableName(), m.ToColumnName("AdminId"), m.ToColumnName("SessionId"))
@@ -92,41 +132,4 @@ func (AdminSession) DataType(m psql.Model, fieldName string) (dataType string) {
 		}
 	}
 	return
-}
-
-// NewAdmin creates new admin with name and password.
-func NewAdmin(name, password string) *Admin {
-	admin := &Admin{
-		Name: name,
-	}
-	admin.Password.MustUpdate(password)
-	return admin
-}
-
-// NewSerializerAdmin converts Admin to SerializerAdmin.
-func NewSerializerAdmin(a *Admin) *SerializerAdmin {
-	if a == nil {
-		return nil
-	}
-	return &SerializerAdmin{
-		Id:        a.Id,
-		Name:      a.Name,
-		Password:  nil,
-		CreatedAt: a.CreatedAt,
-		UpdatedAt: a.UpdatedAt,
-		DeletedAt: a.DeletedAt,
-
-		SessionsCount: nil,
-	}
-}
-
-// NewSerializerAdminSimple converts Admin to SerializerAdminSimple.
-func NewSerializerAdminSimple(a *Admin) *SerializerAdminSimple {
-	if a == nil {
-		return nil
-	}
-	return &SerializerAdminSimple{
-		Id:   a.Id,
-		Name: a.Name,
-	}
 }
