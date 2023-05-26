@@ -79,7 +79,7 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 
 	var ids []string
 	for i := 0; i < admins.Elem().Len(); i++ {
-		elem := admins.Elem().Index(i).Interface()
+		elem := admins.Elem().Index(i).Addr().Interface()
 		if admin, ok := elem.(Serializable); ok {
 			ret.Admins = append(ret.Admins, admin.Serialize("list"))
 		} else {
