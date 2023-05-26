@@ -49,6 +49,10 @@ type (
 	Serializable interface {
 		Serialize(typ string, data ...interface{}) interface{}
 	}
+
+	HasParams interface {
+		Params(string) []string
+	}
 )
 
 var (

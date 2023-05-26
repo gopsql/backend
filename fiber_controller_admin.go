@@ -122,7 +122,7 @@ func (ctrl fiberAdminsCtrl) Create(c FiberCtx) error {
 	var id int
 	changes := m.MustAssign(
 		admin,
-		m.Permit(ctrl.params()...).Filter(c.Body()),
+		m.Permit(ctrl.params("create")...).Filter(c.Body()),
 		m.CreatedAt(),
 		m.UpdatedAt(),
 	)
@@ -141,7 +141,7 @@ func (ctrl fiberAdminsCtrl) Update(c FiberCtx) error {
 	}
 	changes := m.MustAssign(
 		admin,
-		m.Permit(ctrl.params()...).Filter(c.Body()),
+		m.Permit(ctrl.params("update")...).Filter(c.Body()),
 		m.UpdatedAt(),
 	)
 	ctrl.backend.MustValidateStruct(admin)
@@ -164,8 +164,10 @@ func (ctrl fiberAdminsCtrl) Destroy(c FiberCtx) error {
 	return ctrl.Show(c)
 }
 
-func (fiberAdminsCtrl) params() []string {
-	return []string{
-		"Name", "Password",
+func (ctrl fiberAdminsCtrl) params(action string) []string {
+	admin := ctrl.backend.ModelByName("Admin").New().Interface()
+	if admin, ok := admin.(HasParams); ok {
+		return admin.Params(action)
 	}
+	return []string{"Name", "Password"}
 }
