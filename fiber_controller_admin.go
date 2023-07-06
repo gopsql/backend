@@ -22,7 +22,7 @@ type fiberAdminsCtrl struct {
 }
 
 func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
-	mAdmins := ctrl.backend.ModelByName("Admin")
+	mAdmins := ctrl.backend.ModelByName(getName(c, "Admin"))
 
 	q := pagination.PaginationQuerySort{
 		pagination.Pagination{
@@ -91,17 +91,18 @@ func (ctrl fiberAdminsCtrl) List(c FiberCtx) error {
 	}
 
 	if len(ids) > 0 {
-		m := ctrl.backend.ModelByName("AdminSession")
-		m.Select(m.ToColumnName("AdminId"), "COUNT(*)").Tap(func(s *psql.SelectSQL) *psql.SelectSQL {
-			return s.Where(fmt.Sprintf("%s IN (%s)", m.ToColumnName("AdminId"), strings.Join(ids, ",")))
-		}).GroupBy(m.ToColumnName("AdminId")).MustQuery(&ret.SessionsCount)
+		adminId := getName(c, "AdminId")
+		m := ctrl.backend.ModelByName(getName(c, "AdminSession"))
+		m.Select(m.ToColumnName(adminId), "COUNT(*)").Tap(func(s *psql.SelectSQL) *psql.SelectSQL {
+			return s.Where(fmt.Sprintf("%s IN (%s)", m.ToColumnName(adminId), strings.Join(ids, ",")))
+		}).GroupBy(m.ToColumnName(adminId)).MustQuery(&ret.SessionsCount)
 	}
 
 	return c.JSON(ret)
 }
 
 func (ctrl fiberAdminsCtrl) Show(c FiberCtx) error {
-	m := ctrl.backend.ModelByName("Admin")
+	m := ctrl.backend.ModelByName(getName(c, "Admin"))
 	admin := m.New().Interface()
 	m.Find().WHERE("Id", "=", c.Params("id")).MustQuery(admin)
 	if u, ok := admin.(Serializable); ok {
@@ -111,7 +112,7 @@ func (ctrl fiberAdminsCtrl) Show(c FiberCtx) error {
 }
 
 func (ctrl fiberAdminsCtrl) Create(c FiberCtx) error {
-	m := ctrl.backend.ModelByName("Admin")
+	m := ctrl.backend.ModelByName(getName(c, "Admin"))
 	admin := m.New().Interface()
 	if c.Get("Content-Length") == "0" {
 		if u, ok := admin.(Serializable); ok {
@@ -122,7 +123,7 @@ func (ctrl fiberAdminsCtrl) Create(c FiberCtx) error {
 	var id int
 	changes := m.MustAssign(
 		admin,
-		m.Permit(ctrl.params("create")...).Filter(c.Body()),
+		m.Permit(ctrl.params(c, "create")...).Filter(c.Body()),
 		m.CreatedAt(),
 		m.UpdatedAt(),
 	)
@@ -134,14 +135,14 @@ func (ctrl fiberAdminsCtrl) Create(c FiberCtx) error {
 
 func (ctrl fiberAdminsCtrl) Update(c FiberCtx) error {
 	id, _ := strconv.Atoi(c.Params("id"))
-	m := ctrl.backend.ModelByName("Admin")
+	m := ctrl.backend.ModelByName(getName(c, "Admin"))
 	admin := m.New().Interface()
 	if admin, ok := admin.(IsAdmin); ok {
 		admin.SetId(id)
 	}
 	changes := m.MustAssign(
 		admin,
-		m.Permit(ctrl.params("update")...).Filter(c.Body()),
+		m.Permit(ctrl.params(c, "update")...).Filter(c.Body()),
 		m.UpdatedAt(),
 	)
 	ctrl.backend.MustValidateStruct(admin)
@@ -151,21 +152,21 @@ func (ctrl fiberAdminsCtrl) Update(c FiberCtx) error {
 }
 
 func (ctrl fiberAdminsCtrl) Restore(c FiberCtx) error {
-	ctrl.backend.ModelByName("Admin").Update("DeletedAt", nil).WHERE("Id", "=", c.Params("id")).MustExecute()
+	ctrl.backend.ModelByName(getName(c, "Admin")).Update("DeletedAt", nil).WHERE("Id", "=", c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 
 func (ctrl fiberAdminsCtrl) Destroy(c FiberCtx) error {
-	ctrl.backend.ModelByName("Admin").
+	ctrl.backend.ModelByName(getName(c, "Admin")).
 		Update("DeletedAt", time.Now().UTC().Truncate(time.Second)).
 		WHERE("Id", "=", c.Params("id")).MustExecute()
-	ctrl.backend.ModelByName("AdminSession").
-		Delete().WHERE("AdminId", "=", c.Params("id")).MustExecute()
+	ctrl.backend.ModelByName(getName(c, "AdminSession")).
+		Delete().WHERE(getName(c, "AdminId"), "=", c.Params("id")).MustExecute()
 	return ctrl.Show(c)
 }
 
-func (ctrl fiberAdminsCtrl) params(action string) []string {
-	admin := ctrl.backend.ModelByName("Admin").New().Interface()
+func (ctrl fiberAdminsCtrl) params(c FiberCtx, action string) []string {
+	admin := ctrl.backend.ModelByName(getName(c, "Admin")).New().Interface()
 	if admin, ok := admin.(HasParams); ok {
 		return admin.Params(action)
 	}

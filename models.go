@@ -53,6 +53,23 @@ type (
 	HasParams interface {
 		Params(string) []string
 	}
+
+	IsAdminSession interface {
+		GetId() int
+		GetAdminId() int
+		GetSessionId() string
+		GetIpAddress() string
+		GetUserAgent() string
+		GetCreatedAt() time.Time
+		GetUpdatedAt() time.Time
+		SetId(int)
+		SetAdminId(int)
+		SetSessionId(string)
+		SetIpAddress(string)
+		SetUserAgent(string)
+		SetCreatedAt(time.Time)
+		SetUpdatedAt(time.Time)
+	}
 )
 
 var (
@@ -121,6 +138,25 @@ func (a Admin) Serialize(typ string, data ...interface{}) interface{} {
 	}
 	return a
 }
+
+var (
+	_ IsAdminSession = (*AdminSession)(nil)
+)
+
+func (a AdminSession) GetId() int                        { return a.Id }
+func (a AdminSession) GetAdminId() int                   { return a.AdminId }
+func (a AdminSession) GetSessionId() string              { return a.SessionId }
+func (a AdminSession) GetIpAddress() string              { return a.IpAddress }
+func (a AdminSession) GetUserAgent() string              { return a.UserAgent }
+func (a AdminSession) GetCreatedAt() time.Time           { return a.CreatedAt }
+func (a AdminSession) GetUpdatedAt() time.Time           { return a.UpdatedAt }
+func (a *AdminSession) SetId(id int)                     { a.Id = id }
+func (a *AdminSession) SetAdminId(adminId int)           { a.AdminId = adminId }
+func (a *AdminSession) SetSessionId(sessionId string)    { a.SessionId = sessionId }
+func (a *AdminSession) SetIpAddress(ipAddress string)    { a.IpAddress = ipAddress }
+func (a *AdminSession) SetUserAgent(userAgent string)    { a.UserAgent = userAgent }
+func (a *AdminSession) SetCreatedAt(createdAt time.Time) { a.CreatedAt = createdAt }
+func (a *AdminSession) SetUpdatedAt(updatedAt time.Time) { a.UpdatedAt = updatedAt }
 
 func (AdminSession) AfterCreateSchema(m psql.Model) string {
 	return fmt.Sprintf("CREATE UNIQUE INDEX unique_admin_session ON %s (%s, %s);",

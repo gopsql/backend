@@ -27,16 +27,23 @@ type (
 	FiberHandler func(FiberCtx) error
 )
 
+func getName(c FiberCtx, defaultName string) string {
+	if value, ok := c.Locals("Name" + defaultName).(string); ok && value != "" {
+		return value
+	}
+	return defaultName
+}
+
 // FiberNewSession creates new session for adminId and returns a new JWT
 // string.
 func (backend Backend) FiberNewSession(c FiberCtx, adminId int) (token string, err error) {
 	var sessionId string
-	m := backend.ModelByName("AdminSession")
+	m := backend.ModelByName(getName(c, "AdminSession"))
 	err = m.Insert(
-		"AdminId", adminId,
+		getName(c, "AdminId"), adminId,
 		"IpAddress", c.IP(),
 		"UserAgent", c.Get("User-Agent"),
-	).Returning(m.ToColumnName("SessionId")).QueryRow(&sessionId)
+	).Returning(m.ToColumnName(getName(c, "SessionId"))).QueryRow(&sessionId)
 	if err != nil {
 		return
 	}
@@ -45,7 +52,7 @@ func (backend Backend) FiberNewSession(c FiberCtx, adminId int) (token string, e
 		limit = "LIMIT -1" // SQLite must have LIMIT clause
 	}
 	sql := fmt.Sprintf("%[1]s IN (SELECT %[1]s FROM %s WHERE %s = $1 ORDER BY %s DESC %s OFFSET $2)",
-		m.ToColumnName("Id"), m.TableName(), m.ToColumnName("AdminId"), m.ToColumnName("UpdatedAt"), limit)
+		m.ToColumnName("Id"), m.TableName(), m.ToColumnName(getName(c, "AdminId")), m.ToColumnName("UpdatedAt"), limit)
 	err = m.Delete().Where(sql, adminId, 10).Execute()
 	if err != nil {
 		return
@@ -66,7 +73,8 @@ func (backend Backend) MustFiberNewSession(c FiberCtx, adminId int) string {
 // FiberDeleteSession deletes a session in the database.
 func (backend Backend) FiberDeleteSession(c FiberCtx) error {
 	adminId, sessionId, _ := backend.FiberGetAdminAndSessionId(c)
-	return backend.ModelByName("AdminSession").Delete().WHERE("AdminId", "=", adminId, "SessionId", "=", sessionId).Execute()
+	return backend.ModelByName(getName(c, "AdminSession")).Delete().
+		WHERE(getName(c, "AdminId"), "=", adminId, getName(c, "SessionId"), "=", sessionId).Execute()
 }
 
 // MustFiberDeleteSession is like FiberDeleteSession but panics if session
@@ -87,7 +95,7 @@ func (backend Backend) MustFiberValidateNewSession(c FiberCtx) string {
 	var id int
 	var password bcrypt.Password
 	var deletedAt *time.Time
-	m := backend.ModelByName("Admin")
+	m := backend.ModelByName(getName(c, "Admin"))
 	err := m.Select("Id", "Password", "DeletedAt").
 		Where(fmt.Sprintf("lower(%s) = $1", m.ToColumnName("Name")), strings.ToLower(req.Name)).
 		QueryRow(&id, &password, &deletedAt)
@@ -112,38 +120,40 @@ func (backend Backend) FiberGetAdminAndSessionId(c FiberCtx) (adminId int, sessi
 // in the current request, so subsequent calls of this function will not cause
 // new database queries.
 func (backend Backend) FiberGetCurrentAdmin(c FiberCtx) interface{} {
-	if admin := c.Locals("CurrentAdmin"); admin != nil {
+	if admin := c.Locals(getName(c, "CurrentAdmin")); admin != nil {
 		return admin
 	}
 	adminId, sessionId, ok := backend.FiberGetAdminAndSessionId(c)
 	if !ok {
 		return nil
 	}
-	admins := backend.ModelByName("Admin").Quiet()
-	adminSessions := backend.ModelByName("AdminSession").Quiet()
+	admins := backend.ModelByName(getName(c, "Admin")).Quiet()
+	adminSessions := backend.ModelByName(getName(c, "AdminSession")).Quiet()
 	admin := admins.New().Interface()
 	err := admins.Find().Where(fmt.Sprintf("%s IS NULL AND %s = $1",
 		admins.ToColumnName("DeletedAt"), admins.ToColumnName("Id")), adminId).Query(admin)
 	if err != nil {
 		return nil
 	}
-	var adminSession AdminSession
-	err = adminSessions.Find().WHERE("AdminId", "=", adminId, "SessionId", "=", sessionId).Query(&adminSession)
+	adminSession := adminSessions.New().Interface()
+	err = adminSessions.Find().WHERE(getName(c, "AdminId"), "=", adminId, getName(c, "SessionId"), "=", sessionId).Query(adminSession)
 	if err != nil {
 		return nil
 	}
-	changes := []interface{}{}
-	if ip := c.IP(); adminSession.IpAddress != ip {
-		changes = append(changes, "IpAddress", ip)
-	}
-	if ua := c.Get("User-Agent"); adminSession.UserAgent != ua {
-		changes = append(changes, "UserAgent", ua)
-	}
-	if len(changes) > 0 {
-		if adminSessions.Update(changes...).WHERE("Id", "=", adminSession.Id).Execute() != nil {
-			return nil
+	if as, ok := adminSession.(IsAdminSession); ok {
+		changes := []interface{}{}
+		if ip := c.IP(); as.GetIpAddress() != ip {
+			changes = append(changes, "IpAddress", ip)
+		}
+		if ua := c.Get("User-Agent"); as.GetUserAgent() != ua {
+			changes = append(changes, "UserAgent", ua)
+		}
+		if len(changes) > 0 {
+			if adminSessions.Update(changes...).WHERE("Id", "=", as.GetId()).Execute() != nil {
+				return nil
+			}
 		}
 	}
-	c.Locals("CurrentAdmin", admin)
+	c.Locals(getName(c, "CurrentAdmin"), admin)
 	return admin
 }
