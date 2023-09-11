@@ -166,8 +166,9 @@ func (backend Backend) CreateAdmin(adminName, adminPassword string) (name, passw
 
 // CheckAdmin prints a warning if database contains no admins. If
 // CREATE_ADMIN=1 environment variable is set, creates new admin or resets
-// existing admin's password.
-func (backend Backend) CheckAdmin() {
+// existing admin's password. Optional callback is called when admin is created
+// or updated.
+func (backend Backend) CheckAdmin(callbacks ...func(name, password string, updated bool)) {
 	if os.Getenv("CREATE_ADMIN") == "1" {
 		name, password, updated := backend.CreateAdmin("admin", "")
 		if updated {
@@ -178,6 +179,9 @@ func (backend Backend) CheckAdmin() {
 			backend.logger.Info("New admin has been created:")
 			backend.logger.Info("  - name:", name)
 			backend.logger.Info("  - password:", password)
+		}
+		if len(callbacks) > 0 {
+			callbacks[0](name, password, updated)
 		}
 		os.Exit(0)
 	} else {
