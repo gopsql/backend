@@ -116,6 +116,10 @@ func (backend *Backend) SetJWTSession(jwtSession jwtSession) {
 	backend.jwtSession = jwtSession
 }
 
+func (backend *Backend) Logger() logger.Logger {
+	return backend.logger
+}
+
 func (backend *Backend) Migrator() *migrator.Migrator {
 	return backend.migrator
 }
