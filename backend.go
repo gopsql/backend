@@ -38,8 +38,8 @@ type (
 
 	// github.com/gopsql/jwt.Session
 	jwtSession interface {
-		GenerateAuthorization(userId int, sessionId string) (string, error)
-		ParseAuthorization(auth string) (userId int, sessionId string, ok bool)
+		GenerateAuthorization(userId, sessionId string) (string, error)
+		ParseAuthorization(auth string) (userId, sessionId string, ok bool)
 	}
 )
 
