@@ -16,7 +16,7 @@ type (
 		BodyParser(out interface{}) error
 		Get(key string, defaultValue ...string) string
 		IP() string
-		JSON(data interface{}) error
+		JSON(data interface{}, ctype ...string) error
 		Locals(key interface{}, value ...interface{}) (val interface{})
 		Next() (err error)
 		Params(key string, defaultValue ...string) string
