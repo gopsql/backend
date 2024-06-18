@@ -35,6 +35,7 @@ type (
 	InsertSQL = psql.InsertSQL
 	DeleteSQL = psql.DeleteSQL
 	UpdateSQL = psql.UpdateSQL
+	Tx        = psql.Tx
 
 	// github.com/gopsql/jwt.Session
 	jwtSession interface {
