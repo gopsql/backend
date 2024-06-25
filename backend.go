@@ -26,6 +26,10 @@ type (
 		dbConn     db.DB
 	}
 
+	CanSkipMigration interface {
+		SkipMigration() bool
+	}
+
 	// These types are copied from the psql package, so that code that
 	// imports "github.com/gopsql/backend" does not also have to import
 	// "github.com/gopsql/psql".
@@ -131,6 +135,9 @@ func (backend *Backend) MigratorNewMigration() (migrator.Migrations, error) {
 	}
 	var models []migrator.PsqlModel
 	for _, m := range backend.models {
+		if model, ok := m.New().Interface().(CanSkipMigration); ok && model.SkipMigration() {
+			continue
+		}
 		models = append(models, migrator.PsqlModel(m))
 	}
 	return backend.migrator.NewMigration(models...)
